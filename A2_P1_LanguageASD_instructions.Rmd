@@ -77,7 +77,8 @@ Load necessary libraries : what will you need?
 
 ```{r Load Libraries, include = FALSE}
 library(pacman)
-p_load(dplyr, tidyverse, ggplot2,lme4)
+
+p_load(dplyr, tidyverse, ggplot2,lme4,psych, growthcurver)
 ```
 
 ### Define your working directory and load the data
@@ -91,6 +92,7 @@ If you opened this Rmd file outside of a project, you will need some code to fin
 
 ```{r Load Data, include = FALSE}
 setwd("~/M-III-Assignments/A2")
+
 df<-read.csv(file='clean_data.csv',header=TRUE,sep=",")
 df_info<- read.csv(file = "prepared_data.csv", header = TRUE, sep = ",")
 ```
@@ -105,17 +107,20 @@ Describe the characteristics of the two groups of participants and whether the t
 
 ```{r descriptive stats, include = FALSE}
 summary(df_info)
+describe(df_info)
 
-
-df %>% subset (VISIT == 1) %>% subset(Gender ==1)# 61 participant, 51 males, 10 females in total
-
-#Autism
-subset(df_info, Diagnosis =="A")# 29 with autism
-subset(df_info, Diagnosis =="A"& Gender =="M") #25 M, 4F
-subset(df_info, Diagnosis =="A") %>% mean(Age, na.rm=TRUE)
-
+#demographic characteristics
 group_by(df_info, Diagnosis) %>% 
   summary(AgeM=mean(age,na.rm=T))
+  summary(mean(df_info$ADOS))
+
+#info with diagnosis
+subset(df_info, Diagnosis == "A") %>% 
+  describe()
+
+#info without diagnosis
+subset(df_info, Diagnosis == "B") %>% 
+  describe()
 
 ```
 
@@ -134,9 +139,11 @@ Remember to plot the data first and then to run a statistical test.
 - Which variable(s) should be included as random factors?
 
 ```{r ex2, include = FALSE}
-ggplot(data = df, aes(x = VISIT, y = CHI_MLU, group=Diagnosis)) + geom_point() + geom_smooth(method = lm)
+#plotting data
+ggplot(data = df, aes(x = VISIT, y = CHI_MLU, group=Diagnosis)) + geom_point() + geom_smooth(method = lm) + facet_wrap(.~Diagnosis)
 
-
+#plotting per subject
+gplot(data = df, aes(x = VISIT, y = CHI_MLU, group=SUBJ)) + geom_point() + geom_smooth(method = lm) + facet_wrap(.~Diagnosis)
 ```
 
 How would you evaluate whether the model is a good model?
@@ -150,35 +157,87 @@ model2 = lmer(CHI_MLU ~ VISIT * Diagnosis + (1|SUBJ),df)
 model2
 
 anova(model1, model2)
+
 #random slopes only!
-slopes
+
 model3 = lmer(CHI_MLU ~ VISIT + Diagnosis + (1|SUBJ) + (0 + VISIT|SUBJ),df) #ecach child has unique slope, only
 summary(model3)
 
 #random intercept and slopes combined, interacting!!
 model4 = lmer(CHI_MLU ~ VISIT * Diagnosis + (1|SUBJ) + (1 + VISIT|SUBJ),df)
 model4
+#random intercept and slopes combined
+model4 = lmer(CHI_MLU ~ VISIT + Diagnosis + (1|SUBJ) + (1 + VISIT|SUBJ),df)
 summary(model4)
 
+#random intercept and slopes combined, interacting!!
+model5 = lmer(CHI_MLU ~ VISIT * Diagnosis + (1|SUBJ) + (1 + VISIT|SUBJ),df, REML=FALSE)
+summary(model5)
+anova(model5, model4)
 
-#plotting
+# comparing our best modle with null model
+model_null = lmer(CHI_MLU ~ VISIT  + (1|SUBJ) + (1 + VISIT|SUBJ),df, REML=FALSE)
+summary(model_null)
+
+anova(model5, model_null)
+
+#plotting predicted values on actual data
+df<-mutate(df,predicted = predict(model5))
+df<-mutate(df, residuals = residuals(model5))
+
+ggplot(data = df, aes(x=VISIT, y = CHI_MLU)) +
+  geom_point()+
+  geom_segment(aes(xend = VISIT, yend = predicted, aplha = 0.2)) +
+  geom_point(aes(y=predicted, color = ), color = 2) +
+  geom_smooth(method=lm)+
+  facet_wrap(.~Diagnosis)
+
+#growth model plotting
+
+
+new_df<- data.frame(VISIT = df$VISIT, predict_val = predict(growth_model$model), diagno=df$Diagnosis)
+
+ggplot(data = df, aes(x=VISIT, y = CHI_MLU)) +
+  geom_point() +
+  geom_line(data = new_df, aes(y=new_df$predict_val, color = "red")) +
+  geom_line(data = )
+
 ggplot(data = df, aes(x = VISIT, y = CHI_MLU, group=SUBJ)) + geom_point() + geom_smooth(method = lm) + facet_wrap(.~Diagnosis)
 
+```
 
+How would you evaluate whether the model is a good model?
+
+```{r ex2 evaluate, include = FALSE}
+
+#Evaluating models.
+#The better model should involves only predictors which were assumed to have a significant effect, thus we avoid post-hoc adding predictors without any theoretical background, thus making fool of ourselves. Of course, all assumptions must be met and in comparison to simpler models, the best one should definitely explain more variance.
+#Comparing our model with the null model will give us at least a statistical evidence that the model is a better fit than a model without a given predictor at explaining variance in our data.
+
+
+###My notes, you can ignore
 #lmer counts p-value using log-likelihood
 #participants with uncomplete data are thrown away automatically
 #when there is participant with little data, be careful!
 #when the participant is too uniqe, different from others, be especially carefull when interpreting result of a single person!
 #convergence - a failure to fail a great solution every time
+#when the participant is too uniqe, different from others, be especially careful and always interpret in relation to general
+#convergence - a failure to fail to find a great solution every time
 #the higher the verbal iq, the steeper, it effects only visit, because the verbal iq has same effect on D and A similar
 #D*V = D+V+D:V
 ```
+
+
+
+
 
 Not too good, right? Let's check whether a growth curve model is better.
 Remember: a growth curve model assesses whether changes in time can be described by linear, or quadratic, or cubic (or... etc.) components.
 First build the different models, then compare them to see which one is better.
 
 ```{r ex2 growth curve, include = FALSE}
+plot(CHI_MLU ~ VISIT, df, type = "b", xlab = "Visit", ylab = "CHI_MLU")
+
 
 ```
 
@@ -202,10 +261,26 @@ Linguistic development of children MLU is affected by ... [COMPLETE]
 ### Hypothesis: Parental MLU changes: i) over time, ii) according to diagnosis
 
 ```{r ex3, include = FALSE}
+model21 = lmer(MOT_MLU ~ VISIT * Diagnosis + (1|SUBJ) + (1 + VISIT|SUBJ),df, REML=FALSE)
+summary(model21)
+
+model22 = lmer(MOT_MLU ~ VISIT * 1 + (1|SUBJ) + (1 + VISIT|SUBJ),df, REML=FALSE)
+
+model23 = lmer(MOT_MLU ~ VISIT * Diagnosis + (1|SUBJ),df, REML=FALSE)
+
+anova(model21, model22)
+
+
+ggplot(data = df, aes(x = VISIT, y = MOT_MLU, group=Diagnosis)) + geom_point() + geom_smooth(method = lm)
+
+
+
 
 ```
 
-Parent MLU is affected by ... but probably not ...
+Parent MLU is affected by both diagnosis of their children (χ2(2)=17.955, p<0.001) increasing it by 0.356 ± 0.17305
+
+politeness affected pitch (χ2(1)=11.62, p=0.00065), lowering it by about 19.7 Hz ± 5.6 (standard errors)
 [REPORT THE RESULTS]
 
 ### Adding new variables (Exercise 4)
@@ -214,6 +289,10 @@ Your task now is to figure out how to best describe the children linguistic traj
 
 
 ```{r ex4, include = FALSE}
+model31 = lmer(CHI_MLU ~ VISIT * Diagnosis + ADOS + MullenRaw + ExpressiveLangRaw + Socialization+ (1|SUBJ) + (1 + VISIT|SUBJ),df, REML=FALSE)
+summary(model31)
+
+
 
 ```
 
