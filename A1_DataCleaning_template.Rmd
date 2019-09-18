@@ -61,7 +61,6 @@ If you're not in a project in Rstudio, make sure to set your working directory h
 If you created an RStudio project, then your working directory (the directory with your data and code for these assignments) is the project directory.
 
 ```{r}
-setwd("~/M-III-Assignments")
 library(pacman)
 pacman::p_load(dplyr,tidyverse,janitor,reshape,stringr)
 
@@ -248,14 +247,16 @@ anonymise <- function(data, cols_to_anon, algo = "sha256")
 }
  
 #pacman$method3_id <- anonymise(pacman, cols_to_anon) formula
-visit1$SUBJ <- anonymise(visit1, cols_to_anon="SUBJ")
+final_df$SUBJ<- anonymise(final_df, cols_to_anon = "SUBJ")
 
 
-#re-naming levels of gender,
-visit1$Gender<- ifelse(visit1$Gender == 1, "M", "F" )
+#re-naming levels of gender
+final_df$Gender<-ifelse(final_df$Gender==1, "M", "F")
+
+#renaming diagnosis
+final_df$Diagnosis <- ifelse(final_df$Diagnosis == "A", "ASD", "TD")
 
 #making csv file
-write.csv(visit1, file = "prepared_data.csv")
 write.csv(final_df, file = "clean_data.csv")
 ```
 
